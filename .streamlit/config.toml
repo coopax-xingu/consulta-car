@@ -1,0 +1,12 @@
+[theme]
+primaryColor="#1f5a2b"
+backgroundColor="#fffdf8"
+secondaryBackgroundColor="#e8f0e2"
+textColor="#2b2a25"
+font="sans serif"
+base="light"
+[client]
+toolbarMode="minimal"
+[server]
+headless=true
+maxUploadSize=50
