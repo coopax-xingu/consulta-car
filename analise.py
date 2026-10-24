@@ -5,6 +5,30 @@ warnings.filterwarnings('ignore')
 BASE=os.environ.get('GEO_BASES',os.path.join(os.path.dirname(os.path.abspath(__file__)),'data'))
 UFS={'11':'RO','12':'AC','13':'AM','14':'RR','15':'PA','16':'AP','17':'TO','21':'MA','51':'MT'}
 SICAR='https://geoserver.car.gov.br/geoserver/sicar/wfs'
+import ssl
+from requests.adapters import HTTPAdapter
+SICAR_MSG='O servidor do SICAR não respondeu. Tente de novo ou envie o KML do imóvel na aba Enviar arquivo.'
+class _LegacyTLS(HTTPAdapter):
+    # SICAR só aceita TLS1.2 com cifras RSA antigas (ex.: AES256-GCM-SHA384)
+    def __init__(self,verify=True,**k): self._v=verify;super().__init__(**k)
+    def _ctx(self):
+        ctx=ssl.create_default_context()
+        try: ctx.set_ciphers('DEFAULT:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA:AES128-SHA:@SECLEVEL=0')
+        except ssl.SSLError: ctx.set_ciphers('DEFAULT:@SECLEVEL=1')
+        ctx.options|=getattr(ssl,'OP_LEGACY_SERVER_CONNECT',0x4)
+        ctx.maximum_version=ssl.TLSVersion.TLSv1_2
+        if not self._v: ctx.check_hostname=False;ctx.verify_mode=ssl.CERT_NONE
+        return ctx
+    def init_poolmanager(self,*a,**k): k['ssl_context']=self._ctx();return super().init_poolmanager(*a,**k)
+def _sicar_get(params):
+    last=None
+    for v in (True,False):
+        s=requests.Session();s.mount('https://geoserver.car.gov.br',_LegacyTLS(verify=v))
+        for _ in range(2):
+            try:
+                r=s.get(SICAR,params=params,timeout=90,verify=v);r.raise_for_status();return r
+            except Exception as e: last=e
+    raise RuntimeError(f'{SICAR_MSG} (detalhe: {type(last).__name__})')
 def norm_code(c):
     c=c.strip().upper().replace('.','').replace(' ','')
     m=re.match(r'^([A-Z]{2})-(\d{7})-([0-9A-F]{32})$',c);return c if m else None
@@ -12,8 +36,7 @@ def fetch_car(code):
     c=norm_code(code)
     if not c: raise ValueError(f'Código inválido: {code}')
     uf=c[:2].lower()
-    r=requests.get(SICAR,params=dict(service='WFS',version='2.0.0',request='GetFeature',typeNames=f'sicar:sicar_imoveis_{uf}',outputFormat='application/json',CQL_FILTER=f"cod_imovel='{c}'"),timeout=120)
-    r.raise_for_status();g=gpd.read_file(io.BytesIO(r.content))
+    r=_sicar_get(dict(service='WFS',version='2.0.0',request='GetFeature',typeNames=f'sicar:sicar_imoveis_{uf}',outputFormat='application/json',CQL_FILTER=f"cod_imovel='{c}'"));g=gpd.read_file(io.BytesIO(r.content))
     if g.empty: raise ValueError(f'Não encontrado no SICAR: {code}')
     g=g.set_crs(4674,allow_override=True) if g.crs is None else g.to_crs(4674)
     g['imovel']=c;g['uf']=c[:2]
