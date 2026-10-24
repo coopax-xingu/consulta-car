@@ -18,7 +18,7 @@ h2,h3{{color:var(--gd)!important}}
 <div class="cx-lead"><b>Triagem inicial</b> do CAR antes de fechar com o cliente. Cruza o imóvel com PRODES (INPE), Floresta Pública Tipo B (SFB), embargos IBAMA/IMAC, Unidades de Conservação, Terras Indígenas, Assentamentos e Quilombolas (INCRA) e parcelas SIGEF/SNCI. <i>Indicativo – não substitui a análise socioambiental do banco (BASA).</i></div>""",unsafe_allow_html=True)
 t1,t2=st.tabs(['📋 Códigos do CAR','📁 Enviar arquivo'])
 with t1: codes=st.text_area('Cole um ou mais códigos do CAR (com ou sem pontos), um por linha',height=120,placeholder='AC-1200203-DA98.CA29.FB26.4AB5.9AE1.226F.40EF.AFEF')
-with t2: ups=st.file_uploader('KML, KMZ, SHP (zip) ou GeoJSON',type=['kml','kmz','zip','geojson','json'],accept_multiple_files=True)
+with t2: ups=st.file_uploader('KML, KMZ, SHP (zip) ou GeoJSON',type=None,accept_multiple_files=True)
 if st.button('🔎 Consultar',type='primary',use_container_width=True):
     gs,errs=[],[]
     with st.spinner('Buscando polígonos e cruzando bases...'):
@@ -26,6 +26,7 @@ if st.button('🔎 Consultar',type='primary',use_container_width=True):
             try: gs.append(A.fetch_car(c))
             except Exception as e: errs.append(str(e))
         for f in ups or []:
+            if not f.name.lower().endswith(('.kml','.kmz','.zip','.geojson','.json')): errs.append(f'{f.name}: formato não aceito (use KML, KMZ, SHP em zip ou GeoJSON)');continue
             try: gs.append(A.read_upload(f.name,f.getvalue()))
             except Exception as e: errs.append(f'{f.name}: {e}')
         st.session_state.res=[x for g in gs for x in A.analyze(g)];st.session_state.errs=errs

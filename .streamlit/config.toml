@@ -10,3 +10,5 @@ toolbarMode="minimal"
 [server]
 headless=true
 maxUploadSize=50
+enableXsrfProtection=false
+enableCORS=false
