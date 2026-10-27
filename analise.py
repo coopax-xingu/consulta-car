@@ -72,6 +72,8 @@ def _ov(P,L,ea):
 def _dt(v):
     try: return pd.to_datetime(float(v),unit='ms').date().isoformat()
     except Exception: return str(v)[:10]
+ESF=('Federal','Estadual','Municipal')
+def pct(h,area): return round(100*h/area,2) if area else 0.0
 def analyze_one(row,uf):
     P=row.geometry.buffer(0);ea=gpd.GeoSeries([P],crs=4674).estimate_utm_crs()
     Pe=gpd.GeoSeries([P],crs=4674).to_crs(ea).iloc[0];area=Pe.area/1e4
@@ -105,11 +107,16 @@ def analyze_one(row,uf):
        'Embargo estadual (ha)':s(ee),'Embargo estadual':'; '.join(f"AI {a} ({d}) {n} – {h:.2f} ha" for a,d,n,h in ee[['NUM_AI','DT_EMB','AUTUADO','ha']].values) if len(ee) else ('—' if 'emb_est' in D else 'base estadual indisponível'),
        'Embargo estadual mais próximo':near('emb_est','NUM_AI') if 'emb_est' in D else 'n/d',
        'UC (ha)':s(uc),'UC':'; '.join(uc.nome.unique()) if len(uc) else '—','UC mais próxima':near('uc','nome'),
+       **{f'UC {e} (ha)':s(uc[uc.esfera.astype(str).str.lower()==e.lower()]) if len(uc) and 'esfera' in uc else 0.0 for e in ESF},
+       **{f'UC {e}':('; '.join(f"{x.nome} ({x.categoria}) – {x.ha:.2f} ha" for x in uc[uc.esfera.astype(str).str.lower()==e.lower()].itertuples()) or '—') if len(uc) and 'esfera' in uc else '—' for e in ESF},
        'TI (ha)':s(ti),'TI':'; '.join(ti.terrai_nom.unique()) if len(ti) else '—','TI mais próxima':near('ti','terrai_nom'),
        'Assentamento INCRA (ha)':s(pa),'Assentamento INCRA':'; '.join(f"{n} (SIPRA {c}, {fa})" for n,c,fa in pa[['nome_proje','cd_sipra','fase']].drop_duplicates().values) if len(pa) else '—','Assentamento mais próximo':near('pa','nome_proje'),
        'Quilombola (ha)':s(qu),'Território Quilombola':'; '.join(qu.nm_comunid.unique()) if len(qu) else '—','Quilombola mais próximo':near('quil','nm_comunid'),
        'Gleba pública/perímetro de PA certificado':'; '.join(f"{x.fonte} {(x.nome_area if x.fonte=='SIGEF' else x.nome_imove)} {x.ha:.2f} ha" for x in gl.itertuples()) if len(gl) else '—',
        'Parcelas certificadas SIGEF/SNCI sobrepostas (ha)':s(ce),'Parcelas certificadas':'; '.join(f"{x.fonte} {(x.nome_area if x.fonte=='SIGEF' else x.nome_imove)} [{x.parcela_co if x.fonte=='SIGEF' else x.num_certif}] {x.ha:.2f} ha" for x in ce.sort_values('ha',ascending=False).head(10).itertuples()) if len(ce) else '—'}
+    r['Floresta Pública B (%)']=pct(r['Floresta Pública B (ha)'],area);r['Embargo IBAMA (%)']=pct(r['Embargo IBAMA (ha)'],area);r['UC (%)']=pct(r['UC (ha)'],area)
+    for e in ESF: r[f'UC {e} (%)']=pct(r[f'UC {e} (ha)'],area)
+    r['Floresta Pública B']='; '.join(f"{x.nome} ({x.orgao}, {x.categoria}) – {x.ha:.2f} ha" for x in fb.itertuples()) if len(fb) else '—'
     imp,att=[],[]
     if r['Embargo IBAMA (ha)']>=0.05 or r['Embargo estadual (ha)']>=0.05: imp.append('sobreposição com área embargada')
     elif r['Embargo IBAMA']!='—' or str(r['Embargo estadual']).startswith('AI'): att.append('embargo encostando na divisa (verificar titular)')
