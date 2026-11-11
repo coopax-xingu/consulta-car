@@ -80,4 +80,4 @@ if res:
         st.dataframe(pd.DataFrame([(n,r.get(k+' (ha)',0),r.get(k+' (%)',0),r.get(k,'—')) for n,k in cam],columns=['Camada','Área sobreposta (ha)','% do imóvel','Feições atingidas']),hide_index=True,use_container_width=True)
         st.dataframe(pd.DataFrame([(k,str(v)) for k,v in r.items()],columns=['Item','Resultado']),hide_index=True,use_container_width=True)
         st.download_button('📄 Baixar laudo (PDF)',A.laudo_pdf(r,lay),f"laudo_{re.sub(r'\W','_',r['Imóvel'])[:40]}.pdf",key=f'pdf{i}',use_container_width=True)
-st.caption('Fontes: INPE/PRODES 2008–2025 · SFB CNFP 2025 · IBAMA embargos (atualização diária) · IMAC-AC 2023–2026 · TerraBrasilis UC/TI · INCRA acervo fundiário (PA, quilombolas, SIGEF/SNCI) · SICAR WFS. Indicativo; não substitui análise oficial.')
+st.caption('Fontes: INPE/PRODES 2008–2025 · SFB CNFP 2025 · IBAMA embargos (atualização diária) · IMAC-AC 2023–2026 · MMA/CNUC 2025 (UC) · TerraBrasilis (TI, PRODES Cerrado/Pantanal) · INCRA acervo fundiário (PA, quilombolas, SIGEF/SNCI) · SICAR WFS. Indicativo; não substitui análise oficial.')

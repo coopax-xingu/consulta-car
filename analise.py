@@ -1,5 +1,5 @@
 """Núcleo de análise – Rede COOPAX. Reaproveita bases de /workspace/geo_bases (ou env GEO_BASES)."""
-import os,io,re,zipfile,tempfile,requests,warnings
+import os,io,re,glob,zipfile,tempfile,requests,warnings
 import geopandas as gpd,pandas as pd
 warnings.filterwarnings('ignore')
 BASE=os.environ.get('GEO_BASES',os.path.join(os.path.dirname(os.path.abspath(__file__)),'data'))
@@ -61,8 +61,11 @@ def uf_of(geom):
     return best
 def layer_paths(uf):
     u=uf.lower();L={'prodes':f'prodes_{u}_yearly.gpkg','acum2007':f'prodes_{u}_acum2007.gpkg','fpb':f'cnfp2025_{u}_tipoB.gpkg',
-      'emb_ibama':f'embargos_ibama_{u}.gpkg','emb_est':{'ac':'embargos_imac_ac.gpkg'}.get(u),'uc':f'ucs_{u}_terrabrasilis.gpkg','ti':f'tis_{u}_terrabrasilis.gpkg','pa':f'incra_assentamentos_{u}.gpkg','quil':f'incra_quilombolas_{u}.gpkg','cert':f'incra_certificados_{u}.gpkg'}
-    return {k:os.path.join(BASE,v) for k,v in L.items() if v and os.path.exists(os.path.join(BASE,v))}
+      'emb_ibama':f'embargos_ibama_{u}.gpkg','emb_est':{'ac':'embargos_imac_ac.gpkg'}.get(u),'uc':(f'ucs_{u}_cnuc.gpkg' if os.path.exists(os.path.join(BASE,f'ucs_{u}_cnuc.gpkg')) else f'ucs_{u}_terrabrasilis.gpkg'),'ti':f'tis_{u}_terrabrasilis.gpkg','pa':f'incra_assentamentos_{u}.gpkg','quil':f'incra_quilombolas_{u}.gpkg','cert':f'incra_certificados_{u}.gpkg'}
+    P={k:os.path.join(BASE,v) for k,v in L.items() if v and os.path.exists(os.path.join(BASE,v))}
+    if 'prodes' in P:  # arquivos extras prodes_{uf}_yearly_*.gpkg (ex.: MT Cerrado/Pantanal, fora do bioma Amazônia)
+        P['prodes']=[P['prodes']]+sorted(glob.glob(os.path.join(BASE,f'prodes_{u}_yearly_*.gpkg')))
+    return P
 def _ov(P,L,ea):
     if L is None or L.empty: return L.iloc[0:0] if L is not None else gpd.GeoDataFrame()
     c=L[L.intersects(P)].copy()
@@ -81,7 +84,9 @@ def analyze_one(row,uf):
     big=gpd.GeoSeries([P],crs=4674).to_crs(ea).buffer(60000).to_crs(4674).total_bounds
     D={}
     for k,p in layer_paths(uf).items():
-        g=gpd.read_file(p,bbox=tuple(big) if k in('uc','ti','emb_ibama','emb_est','pa','quil') else bb).to_crs(4674)
+        bx=tuple(big) if k in('uc','ti','emb_ibama','emb_est','pa','quil') else bb
+        g=pd.concat([gpd.read_file(q,bbox=bx).to_crs(4674) for q in p],ignore_index=True) if isinstance(p,list) else gpd.read_file(p,bbox=bx).to_crs(4674)
+        if isinstance(p,list): g=gpd.GeoDataFrame(g,geometry='geometry',crs=4674)
         if k!='emb_ibama': g['geometry']=g.geometry.buffer(0)
         D[k]=g
     pr=_ov(P,D.get('prodes'),ea);ac=_ov(P,D.get('acum2007'),ea);fb=_ov(P,D.get('fpb'),ea)
@@ -93,7 +98,8 @@ def analyze_one(row,uf):
     else: gl=ce
     def near(k,campo):
         L=D.get(k)
-        if L is None or L.empty: return '> 60 km'
+        if L is None: return 'base não carregada para esta UF'
+        if L.empty: return '> 60 km'
         d=L.to_crs(ea).distance(Pe)/1000;i=d.idxmin();return f"{L.loc[i,campo]} ({d[i]:.1f} km)"
     s=lambda d:round(float(d.ha.sum()),2) if len(d) else 0.0
     anos=pr.groupby('year').ha.sum().round(2).to_dict() if len(pr) else {}
@@ -132,6 +138,8 @@ def analyze_one(row,uf):
     if imp: v='🔴 Impedimento provável para crédito: '+'; '.join(imp+att)
     elif att: v='🟡 Atenção: '+'; '.join(att)
     else: v='🟢 Sem restrição nas bases consultadas'
+    falt=[n for k,n in (('pa','Assentamentos INCRA'),('cert','parcelas SIGEF/SNCI'),('quil','Quilombolas INCRA'),('ti','Terras Indígenas'),('emb_est','embargo estadual')) if k not in D]
+    if falt: v+=' [bases não carregadas para '+uf+': '+', '.join(falt)+']'
     r['Parecer']=v+' (triagem inicial indicativa – não substitui a análise socioambiental do banco/BASA nem do órgão ambiental; PRODES ≥ ~6 ha, ano PRODES = ago–jul).'
     lay={'CAR':gpd.GeoDataFrame(geometry=[P],crs=4674)}
     for k in D: lay[k]=D[k][D[k].intersects(W)] if k not in('uc','ti','pa','quil') else D[k][D[k].intersects(gpd.GeoSeries([W],crs=4674).iloc[0].buffer(0.05))]
